@@ -3,4 +3,4 @@ pdfplumber
 matplotlib
 pandas
 janome
-noto-fonts
+requests
