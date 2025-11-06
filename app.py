@@ -6,38 +6,46 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from collections import Counter
 from janome.tokenizer import Tokenizer
+import os
 
 # ===== 日本語フォント設定 =====
-# Google Notoフォントを優先的に使用
-plt.rcParams['font.family'] = 'Noto Sans CJK JP'
-plt.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け対策
-# ===== タイトル =====
-st.set_page_config(page_title="PDF語尾・時制分析アプリ", layout="wide")
-st.title("📄 PDF語尾・時制分析アプリ")
-st.write("PDFから文末語尾と、過去形／現在形の頻出単語を分析します。")
+font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+if os.path.exists(font_path):
+    plt.rcParams['font.family'] = font_manager.FontProperties(fname=font_path).get_name()
+else:
+    plt.rcParams['font.family'] = 'DejaVu Sans'
+plt.rcParams['axes.unicode_minus'] = False
+
+# ===== ページ設定 =====
+st.set_page_config(page_title="統合報告書PDF語尾・時制分析アプリ", layout="wide")
+st.title("📄 統合報告書PDF語尾・時制分析アプリ")
+st.write("企業の統合報告書PDFから文末語尾と時制（過去形・現在形）を分析し、文体傾向を可視化します。")
 
 # ===== PDFアップロード =====
-uploaded_file = st.file_uploader("分析したいPDFファイルをアップロードしてください", type=["pdf"])
+uploaded_file = st.file_uploader("分析したい統合報告書PDFをアップロードしてください", type=["pdf"])
 
 if uploaded_file is not None:
     with st.spinner("PDFを読み込み中..."):
+        # --- PDFテキスト抽出 ---
         def extract_text_from_pdf(file):
             all_text = ""
             with pdfplumber.open(file) as pdf:
                 for page in pdf.pages:
-                    all_text += page.extract_text() + "\n"
+                    text = page.extract_text()
+                    if text:
+                        all_text += text + "\n"
             return all_text
 
         text = extract_text_from_pdf(uploaded_file)
-        st.success("PDFテキストを抽出しました！")
+        st.success("✅ PDFテキストを抽出しました！")
         st.write("📖 抽出された冒頭部分：")
         st.code(text[:500] + "..." if len(text) > 500 else text)
 
-    # ===== 文の分割 =====
+    # --- 文分割 ---
     sentences = re.split(r'[。！？]', text)
     sentences = [s.strip() for s in sentences if s.strip()]
 
-    # ===== 語尾判定 =====
+    # --- 語尾による時制分類 ---
     def get_tense(sentence):
         if re.search(r'(た|だった|ました|でした)[^ぁ-んァ-ヶ一-龠]*$', sentence):
             return "過去形"
@@ -47,7 +55,26 @@ if uploaded_file is not None:
     data = [{"文": s, "区分": get_tense(s)} for s in sentences]
     df = pd.DataFrame(data)
 
-    # ===== 語尾集計 =====
+    # ===== 🥧 過去形・現在形の割合 =====
+    st.subheader("📈 時制の割合（文数ベース）")
+
+    tense_counts = df["区分"].value_counts()
+    fig_ratio, ax_ratio = plt.subplots(figsize=(5,5))
+    ax_ratio.pie(
+        tense_counts,
+        labels=tense_counts.index,
+        autopct="%1.1f%%",
+        startangle=90,
+        colors=["cornflowerblue", "orange"]
+    )
+    ax_ratio.axis("equal")
+    ax_ratio.set_title("過去形 vs 現在・未来形 の割合")
+    st.pyplot(fig_ratio)
+
+    st.write("文数内訳：")
+    st.dataframe(pd.DataFrame(tense_counts).rename(columns={"区分":"文数"}))
+
+    # --- 文末語尾抽出 ---
     def extract_sentence_ending(s):
         match = re.search(r'(である|となります|になります|いたします|でした|だった|ます|ました|です|だ)$', s)
         return match.group(1) if match else None
@@ -56,7 +83,7 @@ if uploaded_file is not None:
     ending_counts = Counter(endings)
     df_endings = pd.DataFrame(ending_counts.items(), columns=["語尾", "出現回数"]).sort_values("出現回数", ascending=False)
 
-    # ===== 表と棒グラフ =====
+    # --- 語尾集計表示 ---
     st.subheader("📊 文末語尾の出現頻度")
     st.dataframe(df_endings, use_container_width=True)
 
@@ -67,7 +94,7 @@ if uploaded_file is not None:
     ax1.set_xlabel("出現回数")
     st.pyplot(fig1)
 
-    # ===== 時制別頻出語抽出 =====
+    # --- 時制別頻出語分析 ---
     st.subheader("🕰 時制別頻出語（上位20語）")
 
     tokenizer = Tokenizer()
@@ -88,7 +115,7 @@ if uploaded_file is not None:
 
     col1, col2 = st.columns(2)
 
-    # 過去形
+    # --- 過去形 ---
     with col1:
         st.markdown("#### 🔵 過去形で頻出した単語")
         past_df = pd.DataFrame(word_freq.get("過去形", []), columns=["単語", "出現回数"])
@@ -100,7 +127,7 @@ if uploaded_file is not None:
             ax2.set_title("過去形：頻出単語")
             st.pyplot(fig2)
 
-    # 現在・未来形
+    # --- 現在・未来形 ---
     with col2:
         st.markdown("#### 🟠 現在・未来形で頻出した単語")
         future_df = pd.DataFrame(word_freq.get("現在・未来形", []), columns=["単語", "出現回数"])
@@ -111,5 +138,10 @@ if uploaded_file is not None:
             ax3.invert_yaxis()
             ax3.set_title("現在・未来形：頻出単語")
             st.pyplot(fig3)
+
+    # --- ダウンロード ---
+    csv = df_endings.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 文末語尾集計結果をCSVでダウンロード", data=csv, file_name="語尾集計結果.csv", mime="text/csv")
+
 else:
-    st.info("👆 上のボックスからPDFファイルを選択してください。")
+    st.info("👆 上のボックスから統合報告書PDFファイルを選択してください。")
