@@ -2,5 +2,4 @@ streamlit
 pdfplumber
 matplotlib
 pandas
-japanize-matplotlib
 janome
