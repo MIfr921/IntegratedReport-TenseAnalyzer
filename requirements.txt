@@ -3,4 +3,4 @@ pdfplumber
 matplotlib
 pandas
 janome
-font-ttf-noto-cjk
+noto-fonts
