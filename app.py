@@ -3,10 +3,14 @@ import pdfplumber
 import re
 import pandas as pd
 import matplotlib.pyplot as plt
-import japanize_matplotlib
+from matplotlib import font_manager
 from collections import Counter
 from janome.tokenizer import Tokenizer
 
+# ===== 日本語フォント設定 =====
+# Google Notoフォントを優先的に使用
+plt.rcParams['font.family'] = 'Noto Sans CJK JP'
+plt.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け対策
 # ===== タイトル =====
 st.set_page_config(page_title="PDF語尾・時制分析アプリ", layout="wide")
 st.title("📄 PDF語尾・時制分析アプリ")
