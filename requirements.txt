@@ -4,3 +4,4 @@ matplotlib
 pandas
 janome
 requests
+pykakasi
