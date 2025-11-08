@@ -34,7 +34,7 @@ def to_roman(txt):
 # ===== Streamlit設定 =====
 st.set_page_config(page_title="統合報告書PDF語尾・時制分析アプリ", layout="wide")
 st.title("📄 統合報告書PDF語尾・時制分析アプリ")
-st.write("企業の統合報告書PDFから文末語尾・時制・キーワード傾向を分析します。")
+st.write("企業の統合報告書PDFから文末語尾・時制・キーワード傾向を分析し、統計的有意差も可視化します。")
 
 # ===== PDFアップロード =====
 uploaded_file = st.file_uploader("分析したい統合報告書PDFをアップロードしてください", type=["pdf"])
@@ -68,7 +68,7 @@ if uploaded_file is not None:
 
     df = pd.DataFrame([{"文": s, "区分": get_tense(s)} for s in sentences])
 
-    # ===== 🥧 時制の割合（グラフはローマ字） =====
+    # ===== 🥧 時制の割合（グラフ＝ローマ字） =====
     st.subheader("📈 時制の割合（グラフ＝ローマ字）")
     tense_counts = df["区分"].value_counts()
     labels_romaji = [to_roman(label) for label in tense_counts.index]
@@ -105,32 +105,34 @@ if uploaded_file is not None:
     ax1.set_xlabel("Count")
     st.pyplot(fig1)
 
-    # ===== 📏 特定語の出現頻度と統計比較 =====
-    st.subheader("📏 特定語の出現頻度・割合・統計検定")
+    # ===== 📏 特定語の出現頻度・割合・統計検定 =====
+    st.subheader("📏 特定語の出現頻度・割合・統計検定（全体文字割合含む）")
     user_input = st.text_input("カウントしたい語をカンマ区切りで入力してください（例：成長,方針,未来）")
 
     if user_input:
         keywords = [w.strip() for w in user_input.split(",") if w.strip()]
-        results = []
+        total_chars = len(text.replace("\n", "").replace(" ", ""))  # 改行・空白除外した総文字数
         total_past = len(df[df["区分"]=="過去形"])
         total_future = len(df[df["区分"]=="現在・未来形"])
 
+        results = []
         for word in keywords:
             past_contains = df[df["区分"]=="過去形"]["文"].apply(lambda x: word in x).sum()
             future_contains = df[df["区分"]=="現在・未来形"]["文"].apply(lambda x: word in x).sum()
 
-            # 割合
             past_ratio = past_contains / total_past * 100 if total_past else 0
             future_ratio = future_contains / total_future * 100 if total_future else 0
 
-            # 2×2表
+            # 全体文字数に対する割合
+            char_ratio = (text.count(word) * len(word)) / total_chars * 100 if total_chars else 0
+
+            # 2×2表で検定
             table = [[past_contains, total_past - past_contains],
                      [future_contains, total_future - future_contains]]
 
             try:
                 chi2, p, dof, ex = chi2_contingency(table)
             except ValueError:
-                # 0がある場合はFisher
                 _, p = fisher_exact(table)
 
             results.append({
@@ -139,6 +141,7 @@ if uploaded_file is not None:
                 "現在・未来形_文数": future_contains,
                 "過去形_割合(%)": round(past_ratio, 2),
                 "現在・未来形_割合(%)": round(future_ratio, 2),
+                "全体文字割合(%)": round(char_ratio, 3),
                 "p値": round(p, 4)
             })
 
@@ -148,14 +151,17 @@ if uploaded_file is not None:
         # --- グラフ化（ローマ字ラベル） ---
         fig_kw, ax_kw = plt.subplots(figsize=(6, 4))
         ax_kw.barh([to_roman(w) for w in df_stats["語"]], df_stats["過去形_文数"], color="cornflowerblue", label="Past")
-        ax_kw.barh([to_roman(w) for w in df_stats["語"]], df_stats["現在・未来形_文数"], color="orange", left=df_stats["過去形_文数"], label="Present/Future")
+        ax_kw.barh([to_roman(w) for w in df_stats["語"]], df_stats["現在・未来形_文数"],
+                   color="orange", left=df_stats["過去形_文数"], label="Present/Future")
         ax_kw.invert_yaxis()
         ax_kw.set_title("Keyword Count by Tense (Romaji)", fontsize=13)
         ax_kw.set_xlabel("Sentence Count")
         ax_kw.legend()
         st.pyplot(fig_kw)
 
-    # ===== CSV出力（日本語データ） =====
+        st.caption(f"📘 総文字数（空白除外）: {total_chars:,} 文字")
+
+    # ===== CSV出力 =====
     csv = df_end.to_csv(index=False).encode('utf-8-sig')
     st.download_button(
         "📥 文末語尾集計結果をCSVでダウンロード（日本語）",
